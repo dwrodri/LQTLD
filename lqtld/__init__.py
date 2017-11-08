@@ -192,8 +192,6 @@ def get_neighbor(cell, level_dif_index, direction, problem_size):
             return qlao(cell[0], tx, ty, direction << (2 * (problem_size - l)))
 
 
-
-
 if __name__ == '__main__':
     flipped_grid = [[1, 1, 1, 1, 1, 0, 0, 0],  # this is sample data from paper
                     [1, 1, 1, 1, 1, 0, 0, 0],
@@ -208,4 +206,4 @@ if __name__ == '__main__':
     populate_tree(desired_grid.tolist(), linear_tree)  # do the thing with the stuff
     linear_tree = sorted(linear_tree, key=lambda x: x[1], reverse=False)  # sort tree to match paper
     print tree_as_string(linear_tree, int(math.log(len(desired_grid.tolist()), 2)))
-    print "East neighbor of {0:s} is {1:s}".format(binary_to_quaternary_string(linear_tree[1][0], 3), binary_to_quaternary_string(get_neighbor(linear_tree[1], 3, int('01',2), 3), 3))
+    print 'East neighbor of {0:s} is {1:s}'.format(binary_to_quaternary_string(linear_tree[4][0], 3), binary_to_quaternary_string(get_neighbor(linear_tree[4], 3, int('01', 2), 3), 3))
