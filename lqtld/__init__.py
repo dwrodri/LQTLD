@@ -14,7 +14,7 @@ def qlao(code, tx, ty, direction):
     :param code:
     :param tx: the tx value fom the paper
     :param ty: the ty value from the paper
-    :param direction:
+    :param direction: direction vector in interleaved binary format
     :return:
     """
     return (((code | ty) + (direction & tx)) & tx) | (((code | tx) + (direction & ty)) & ty)
@@ -33,7 +33,7 @@ def update_neighbors(tree, cell, problem_size):
     directions = [int('01', 2), int('10', 2), int('01' * problem_size, 2),
                   int('10' * problem_size, 2)]  # west, south, north, east
     neighbor_codes = []
-    directions = map(lambda x: x << (2 * (problem_size - cell[1])), directions)
+    directions = list(map(lambda x: x << (2 * (problem_size - cell[1])), directions))
     for i in range(4):
         if cell[3 + i] == sys.maxsize:  # if neighbor is known wall, make no changes to any LD
             # print 'Neighbor {0:d} is wall, doing nothing'.format(i)
@@ -137,9 +137,9 @@ def divide(cell, grid, problem_size):
             cell[3 + i] -= 1
     generations = [cell[1] + 1] * 4
     new_code_bits = map(lambda x: x << (2 * (problem_size - generations[x])), range(4))
-    codes = map(lambda x: cell[0] | x, new_code_bits)
+    codes = list(map(lambda x: cell[0] | x, new_code_bits))
     # print 'Children codes are: %s' % str(map(lambda x: binary_to_quaternary_string(x, problem_size), codes))
-    colors = map(lambda x: fetch_color(codes[x], generations[x], grid, problem_size), range(4))
+    colors = list(map(lambda x: fetch_color(codes[x], generations[x], grid, problem_size), range(4)))
     east_levels = [0, cell[3], 0, cell[3]]
     north_levels = [0, 0, cell[4], cell[4]]
     west_levels = [cell[5], 0, cell[5], 0]
