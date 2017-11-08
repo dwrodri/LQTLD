@@ -165,11 +165,33 @@ def populate_tree(grid, lqtld):
                 # i][0], problem_size), lqtld[i][1])
                 update_neighbors(lqtld, lqtld[i], problem_size)  # line 5 of figure 7
                 break
-        target_node = lqtld.pop(i)
+        target_node = lqtld.pop(i)  # pop gray node off
         children = divide(target_node, grid, problem_size)
         for child in children:
-            update_neighbors(lqtld, child, problem_size)
-        lqtld.extend(children)
+            update_neighbors(lqtld, child, problem_size)  # check non-brother neighbors of kids
+        lqtld.extend(children)  # add new kids
+
+def get_neighbor(cell, level_dif_index, direction, problem_size):
+    """
+    returns neighbor code in given direction
+    :param cell: cell whose neighbor we want
+    :param level_dif_index: level difference of neighbor in that direction
+    :param direction: direction vector to apply to the code
+    :param problem_size: maximum amount of cell divisions
+    :return: location code of neighbor
+    """
+    dd = cell[level_dif_index]
+    if dd != sys.maxsize:  # if the direction requested is not facing wall
+        n_q, l = cell[:2]
+        shift = 2 * (problem_size - l - dd)
+        tx = int('01' * problem_size, 2)
+        ty = int('10' * problem_size, 2)
+        if dd < 0:
+            return qlao((n_q >> shift << shift), tx, ty, (direction << shift))
+        else:
+            return qlao(cell[0], tx, ty, direction << (2 * (problem_size - l)))
+
+
 
 
 if __name__ == '__main__':
@@ -181,8 +203,9 @@ if __name__ == '__main__':
                     [0, 0, 0, 0, 1, 1, 1, 1],
                     [0, 0, 0, 0, 0, 0, 0, 0],
                     [0, 0, 0, 0, 0, 0, 0, 0]]
-    desired_grid = np.flipud(np.mat(flipped_grid))
-    linear_tree = [[0, 0, 'G', sys.maxsize, sys.maxsize, sys.maxsize, sys.maxsize]]
-    populate_tree(desired_grid.tolist(), linear_tree)
-    linear_tree = sorted(linear_tree, key=lambda x: x[1], reverse=False)
-    # print tree_as_string(linear_tree, int(math.log(len(desired_grid.tolist()), 2)))
+    desired_grid = np.flipud(np.mat(flipped_grid))  # flip my matrix to fit coordinates of code system
+    linear_tree = [[0, 0, 'G', sys.maxsize, sys.maxsize, sys.maxsize, sys.maxsize]]  # instantiate tree
+    populate_tree(desired_grid.tolist(), linear_tree)  # do the thing with the stuff
+    linear_tree = sorted(linear_tree, key=lambda x: x[1], reverse=False)  # sort tree to match paper
+    print tree_as_string(linear_tree, int(math.log(len(desired_grid.tolist()), 2)))
+    print "East neighbor of {0:s} is {1:s}".format(binary_to_quaternary_string(linear_tree[1][0], 3), binary_to_quaternary_string(get_neighbor(linear_tree[1], 3, int('01',2), 3), 3))
