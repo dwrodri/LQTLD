@@ -6,7 +6,7 @@ import numpy as np
 # Node format: (code number, generation, color, east, north, west, south)
 # NOTE: sys.maxsize used to denote presence of wall as neighbor
 # NOTE: 0 = bottom left, 1 = bottom right, 2 = top left, 3 = top right
-
+problem_size = 3
 def qlao(code, tx, ty, direction):
     """
     This is the circled plus operator from the paper. QLAO stands for quad location addition operator
@@ -20,12 +20,11 @@ def qlao(code, tx, ty, direction):
     return (((code | ty) + (direction & tx)) & tx) | (((code | tx) + (direction & ty)) & ty)
 
 
-def update_neighbors(tree, cell, problem_size):
+def update_neighbors(tree, cell):
     """
     updates of all neighbors of a given cell code regardless of brotherhood. the first for loop of figure 7
     :param tree: linear tree containing neighbors
     :param cell: tuple representing gray cell about to be divided
-    :param problem_size: problem size used to generate direction codes
     :return: this is a non-returning functions
     """
     # generate direction increments for finding neighbors
@@ -41,16 +40,9 @@ def update_neighbors(tree, cell, problem_size):
         else:
             neighbor_codes.append(qlao(cell[0], int('01' * problem_size, 2), int('10' * problem_size, 2),
                                        directions[i]))  # this is theorem 1 from paper
-            # print 'Neighbor {0:d} is {1:s}'.format(i, binary_to_quaternary_string(neighbor_codes[i], problem_size))
             neighbor = next((x for x in tree if x[0] == neighbor_codes[i]), None)
             if neighbor is not None and neighbor[1] == cell[1]:
-                # print 'Incrementing index %d of %s' % ((3+((2+i)%4)), binary_to_quaternary_string(neighbor[0],
-                # problem_size))
                 neighbor[3 + ((2 + i) % 4)] += 1
-
-                # print 'Neighbors of {0:s} are : E = {1:s} N = {2:s} W = {3:s} S = {4:s}'.format(
-                # binary_to_quaternary_string(cell[0], problem_size), *map(lambda x: binary_to_quaternary_string(x,
-                # problem_size), neighbor_codes))
 
 
 def grey_nodes_in_tree(tree):
@@ -62,7 +54,7 @@ def grey_nodes_in_tree(tree):
     return next((node for node in tree if node[2] == 'G'), None) is not None
 
 
-def binary_to_quaternary_string(code, problem_size):
+def binary_to_quaternary_string(code):
     """
     convert the int location code to # printable quaternary value
     :param code: binary form of code to be # printed
@@ -78,13 +70,12 @@ def binary_to_quaternary_string(code, problem_size):
     return desired
 
 
-def fetch_color(code, gen, grid, problem_size):
+def fetch_color(code, gen, grid):
     """
     figures out what the color is of the cell
     :param code: location code of cell
     :param gen: generation of cell used to calculate size of cell
     :param grid: grid that "contains" cell
-    :param problem_size: max amount of cell divisions
     :return: white = "W", gray = "G", black = "B"
     """
     cell_x = int('{0:06b}'.format(code)[1::2], 2)  # extract interlaced x coordinate
@@ -106,11 +97,10 @@ def fetch_color(code, gen, grid, problem_size):
         return 'G'
 
 
-def tree_as_string(tree, problem_size):
+def tree_as_string(tree):
     """
     dump contents of quadtree in prettified format
     :param tree:
-    :param problem_size:
     :return:
     """
     desired = '(\n'
@@ -119,7 +109,7 @@ def tree_as_string(tree, problem_size):
         for i in range(len(cell)):
             if isinstance(cell[i], int):
                 if i == 0:
-                    cell[i] = binary_to_quaternary_string(cell[i], problem_size)
+                    cell[i] = binary_to_quaternary_string(cell[i])
                 elif cell[i] == sys.maxsize:
                     cell[i] = '#'
                 elif cell[i] == sys.maxsize + 1:
@@ -131,7 +121,7 @@ def tree_as_string(tree, problem_size):
     return desired
 
 
-def divide(cell, grid, problem_size):
+def divide(cell, grid):
     for i in range(4):
         if cell[3 + i] != sys.maxsize:
             cell[3 + i] -= 1
@@ -139,7 +129,7 @@ def divide(cell, grid, problem_size):
     new_code_bits = map(lambda x: x << (2 * (problem_size - generations[x])), range(4))
     codes = list(map(lambda x: cell[0] | x, new_code_bits))
     # print 'Children codes are: %s' % str(map(lambda x: binary_to_quaternary_string(x, problem_size), codes))
-    colors = list(map(lambda x: fetch_color(codes[x], generations[x], grid, problem_size), range(4)))
+    colors = list(map(lambda x: fetch_color(codes[x], generations[x], grid), range(4)))
     east_levels = [0, cell[3], 0, cell[3]]
     north_levels = [0, 0, cell[4], cell[4]]
     west_levels = [cell[5], 0, cell[5], 0]
@@ -163,15 +153,15 @@ def populate_tree(grid, lqtld):
             if lqtld[i][2] == 'G':  # find first gray node
                 # print 'found gray node with code: {0:s} and gen: {1:d}'.format(binary_to_quaternary_string(lqtld[
                 # i][0], problem_size), lqtld[i][1])
-                update_neighbors(lqtld, lqtld[i], problem_size)  # line 5 of figure 7
+                update_neighbors(lqtld, lqtld[i])  # line 5 of figure 7
                 break
         target_node = lqtld.pop(i)  # pop gray node off
-        children = divide(target_node, grid, problem_size)
+        children = divide(target_node, grid)
         for child in children:
-            update_neighbors(lqtld, child, problem_size)  # check non-brother neighbors of kids
+            update_neighbors(lqtld, child)  # check non-brother neighbors of kids
         lqtld.extend(children)  # add new kids
 
-def get_neighbor(cell, level_dif_index, direction, problem_size):
+def get_neighbor(cell, level_dif_index, direction):
     """
     returns neighbor code in given direction
     :param cell: cell whose neighbor we want
@@ -191,7 +181,7 @@ def get_neighbor(cell, level_dif_index, direction, problem_size):
         else:
             return qlao(cell[0], tx, ty, direction << (2 * (problem_size - l)))
 
-def find_containing_cell(row, col, tree, problem_size):
+def find_containing_cell(row, col, tree):
     row_bits = '{0:03b}'.format(row)
     col_bits = '{0:03b}'.format(col)
     pixel_code = int(''.join([row + col for row, col in zip(row_bits, col_bits)]), 2)
@@ -211,24 +201,43 @@ def find_containing_cell(row, col, tree, problem_size):
 
 
 
-def binary_search(tree, code, gen):
-    start = 0
-    end = len(tree)-1
-    while start <= end:
-        middle = (start + end)>>1
-        middle_code = tree[middle][0]
-        middle_gen = tree[middle][1]
-        print 'MIDDLE: {0:d} {1:s} {2:d}'.format(middle, binary_to_quaternary_string(middle_code, 3), middle_gen)
-        if code < middle_code:
-            end = middle-1
-        elif code > middle_code:
-            start = middle_code+1
-        if code == middle_code and gen == middle_gen:
-            return middle_code
-        else:
-            return -1
+def linear_search(code, gen, tree):
+    print 'Searching for code: ' + binary_to_quaternary_string(code) + ' of gen: ' + str(gen)
+    for i in range(len(tree)):
+        if code == tree[i][0] and gen == tree[i][1]:
+            return i
     return -1
 
+def get_all_neighbor_indices(index, tree):
+    print 'getting neighbor_indices of: ' + binary_to_quaternary_string(tree[index][0])
+    direction_vectors = [1, 2, int('01'*problem_size,2), int('10'*problem_size, 2)]  # generate diretion vectors
+    neighbor_indices = []
+    for i in range(len(direction_vectors)):
+        if tree[index][3+i] != sys.maxsize: #if there isn't a wall in that direction
+            neighbor_code = get_neighbor(tree[index], 3+i, direction_vectors[i])
+            neighbor_gen = tree[index][1]+tree[index][3+i]
+            print 'Checking neighbor: ' + binary_to_quaternary_string(neighbor_code) + ' of gen: ' + str(neighbor_gen)
+            neighbor_index = linear_search(neighbor_code, neighbor_gen, tree)
+            if tree[index][3+i] <=0: #neighbor is bigger or same size, just add it on
+                neighbor_indices.append(linear_search(neighbor_code, neighbor_gen, tree))
+            else:  # otherwise, you're gonna have to find all the cells flush to that side
+                get_sub_cells(neighbor_code, tree[index][1], i, neighbor_indices, tree)
+    return neighbor_indices
+
+def get_sub_cells(code, gen, direction, index_list, tree):
+    """
+    load all subcells flush to a certain side into a list
+    """
+    if gen == problem_size:
+        print 'Couldn\'t find cell' + binary_to_quaternary_string(code) + ' of gen: ' + str(gen)
+    flush_combos = [[0,2],[0,1],[1,3],[2,3]] #new bits to add given each case
+    codes_to_check = map(lambda x: code | (x << (2 * (problem_size - gen - 1))), flush_combos[direction])  # create child codes
+    for code in codes_to_check:
+        child_index = linear_search(code, gen+1, tree)
+        if child_index != -1:
+            index_list.append(child_index)
+        else:
+            get_sub_cells(code, gen+1, direction, index_list, tree)
 
 if __name__ == '__main__':
     flipped_grid = [[1, 1, 1, 1, 1, 0, 0, 0],  # this is sample data from paper
@@ -243,5 +252,8 @@ if __name__ == '__main__':
     linear_tree = [[0, 0, 'G', sys.maxsize, sys.maxsize, sys.maxsize, sys.maxsize]]  # instantiate tree
     populate_tree(desired_grid.tolist(), linear_tree)  # do the thing with the stuff
     linear_tree = sorted(linear_tree, key=lambda x: x[0], reverse=False)  # sort tree to match paper
-    print tree_as_string(linear_tree, int(math.log(len(desired_grid.tolist()), 2)))
-    print find_containing_cell(5, 6, linear_tree, 3)
+    print tree_as_string(linear_tree)
+    test_neighbors = []
+    for index in get_all_neighbor_indices(5, linear_tree):
+        test_neighbors.append(linear_tree[index])
+    print tree_as_string(test_neighbors)
