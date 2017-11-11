@@ -191,6 +191,44 @@ def get_neighbor(cell, level_dif_index, direction, problem_size):
         else:
             return qlao(cell[0], tx, ty, direction << (2 * (problem_size - l)))
 
+def find_containing_cell(row, col, tree, problem_size):
+    row_bits = '{0:03b}'.format(row)
+    col_bits = '{0:03b}'.format(col)
+    pixel_code = int(''.join([row + col for row, col in zip(row_bits, col_bits)]), 2)
+    query_code = -1
+    print 'Pixel Code is:' + binary_to_quaternary_string(pixel_code, 3) + ' (' + col_bits + ', ' + row_bits + ')'
+    for i in range(1, problem_size):
+        mask = int('1'*(2*i) + '0'*(2 * (problem_size - i)), 2)
+        print bin(pixel_code) + ' & ' + bin(mask)
+        query_code = pixel_code & mask
+        query_gen = i
+        print 'Searching for cell with code: {0:06b}'.format(query_code) + ' and gen: ' + str(query_gen)
+        result = binary_search(tree, query_code, query_gen)
+        if result != -1:
+            break
+
+    return 'Containing Cell: ' + binary_to_quaternary_string(query_code, 3)
+
+
+
+def binary_search(tree, code, gen):
+    start = 0
+    end = len(tree)-1
+    while start <= end:
+        middle = (start + end)>>1
+        middle_code = tree[middle][0]
+        middle_gen = tree[middle][1]
+        print 'MIDDLE: {0:d} {1:s} {2:d}'.format(middle, binary_to_quaternary_string(middle_code, 3), middle_gen)
+        if code < middle_code:
+            end = middle-1
+        elif code > middle_code:
+            start = middle_code+1
+        if code == middle_code and gen == middle_gen:
+            return middle_code
+        else:
+            return -1
+    return -1
+
 
 if __name__ == '__main__':
     flipped_grid = [[1, 1, 1, 1, 1, 0, 0, 0],  # this is sample data from paper
@@ -204,6 +242,6 @@ if __name__ == '__main__':
     desired_grid = np.flipud(np.mat(flipped_grid))  # flip my matrix to fit coordinates of code system
     linear_tree = [[0, 0, 'G', sys.maxsize, sys.maxsize, sys.maxsize, sys.maxsize]]  # instantiate tree
     populate_tree(desired_grid.tolist(), linear_tree)  # do the thing with the stuff
-    linear_tree = sorted(linear_tree, key=lambda x: x[1], reverse=False)  # sort tree to match paper
+    linear_tree = sorted(linear_tree, key=lambda x: x[0], reverse=False)  # sort tree to match paper
     print tree_as_string(linear_tree, int(math.log(len(desired_grid.tolist()), 2)))
-    print 'East neighbor of {0:s} is {1:s}'.format(binary_to_quaternary_string(linear_tree[4][0], 3), binary_to_quaternary_string(get_neighbor(linear_tree[4], 3, int('01', 2), 3), 3))
+    print find_containing_cell(5, 6, linear_tree, 3)
