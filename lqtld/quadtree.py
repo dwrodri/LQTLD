@@ -1,23 +1,28 @@
 import math
 import sys
 import png
-import numpy as np
+from fractions import Fraction
 class LQTLD:
-    def __init__(self, occupancy_matrix, map_resolution, dimensions, filename=None):
+    """
+    An implementation of a Linear Quadtree with support for neighboring cell access in constant time. Currrently in Python 2.7.
+    """
+    def __init__(self, occupancy_matrix, map_resolution, filename=None):
         self.occupancy_matrix = occupancy_matrix
         self.map_resolution = map_resolution
-        self.width, self.height = dimensions
-        if self.width != self.height or not filter(lambda x: x & (x-1) == 0, dimensions):  # if not a power of two and not square
+        if float(int(math.log(len(occupancy_matrix), 2))) < math.log(len(occupancy_matrix), 2):
              self.pad(int(math.log(len(occupancy_matrix), 2))+1)
-             self.width = self.height = len(occupancy_matrix)
-        self.r = int(math.log(len(occupancy_matrix), 2))
+        self.r = int(math.log(len(self.occupancy_matrix), 2))
+        self.size = 2**self.r
+        self.inflate_obstacles()
         self.tree = []
         if filename is None:
+            print 'Generating new quadtree file...'
             self.tree = [[0, 0, 'G', sys.maxsize, sys.maxsize, sys.maxsize, sys.maxsize]]  # initialize tree with node representing entire map
             self.generate_tree(self.tree)  # this is where the magic happens...
             self.tree = sorted(self.tree, key=lambda x: x[0])
             self.write_tree_to_file()
         else:
+            print 'Loading quadtree from file...'
             with open(filename) as tree_data:
                 for line in tree_data:
                     cell = []
@@ -28,11 +33,9 @@ class LQTLD:
                             cell.append(element)
 
                     self.tree.append(cell)
-        print self.r
-        print self.repr_tree()
 
     def write_tree_to_file(self):
-        file_object = open('/tmp/test_lqtld.txt', 'w')
+        file_object = open('/home/dwrodri/catkin_ws/src/assessment/lqtld.txt', 'w')
         for cell in self.tree:
             line = ''
             for value in cell:
@@ -51,6 +54,22 @@ class LQTLD:
         for i in range(vert_extension):
             self.occupancy_matrix.append([1]*(2**new_r))
 
+    def inflate_obstacles(self):
+        for i in range(800):
+            for j in range(1000):
+                if i + 8 < 800 and i - 8 >=0 and j + 8 < 1000 and j - 8 >= 0:
+                    if self.occupancy_matrix[i][j+8] == 1:
+                        self.occupancy_matrix[i][j] = -1
+                    if self.occupancy_matrix[i][j-8] == 1:
+                        self.occupancy_matrix[i][j] = -1
+                    if self.occupancy_matrix[i+8][j] == 1:
+                        self.occupancy_matrix[i][j] = -1
+                    if self.occupancy_matrix[i-8][j] == 1:
+                        self.occupancy_matrix[i][j] = -1
+        self.occupancy_matrix = map(lambda row: map(abs, row), self.occupancy_matrix)
+
+
+
     def generate_tree(self, grid):
         """
         populate the linear quad tree with cells that track level differences.
@@ -64,10 +83,13 @@ class LQTLD:
                     self.update_neighbors(self.tree[i])  # neighbors of first GRAY node increased by one
                     break
             target_node = self.tree.pop(i)  # delete it
-            children = self.divide(target_node)  # append its four children
-            for child in children:  # for each equal-sized neighbor of each child (that is not brother)
-                self.update_neighbors(child)  # corresponding level differences increased by 1
-            self.tree.extend(children)  # add new kids since they were out of the list
+            if target_node[1] < self.r:
+                children = self.divide(target_node)  # append its four children
+                for child in children:  # for each equal-sized neighbor of each child (that is not brother)
+                    self.update_neighbors(child)  # corresponding level differences increased by 1
+                self.tree.extend(children)  # add new kids since they were out of the list
+
+        sys.stdout.write('\n')
 
     def update_neighbors(self, cell):
         """
@@ -117,19 +139,9 @@ class LQTLD:
         :param code: the cell code to be converted
         :return: list of [row, col] that can be used by other programs
         """
-        y_bits = bin(code).zfill(2*self.r)[::2]  # print length of binary matching code
-        x_bits = bin(code).zfill(2*self.r)[1::2]
-        row = 0
-        col = 0
-        for i in range(self.r):
-            x_bit = x_bits[i]  # get ith bit from each one
-            y_bit = y_bits[i]
-            if x_bit == '1':  # if bit is one...
-                col += len(self.occupancy_matrix[0]) >> (i+1)  # add length of cell generation
-            if y_bit == '1':
-                row += len(self.occupancy_matrix) >> (i+1)  # do same for y bits
-        #print 'locaiton on matrix is: %d, %d' % (row, col)
-        return [row, col]
+        row_bits = int(bin(code)[2:].zfill(2*self.r)[::2], 2)
+        col_bits = int(bin(code)[2:].zfill(2*self.r)[1::2], 2)
+        return [row_bits, col_bits]
 
 
     def pose_to_pixel(self, pose_coords):
@@ -147,22 +159,22 @@ class LQTLD:
         converts row, col to ros stage x, y
         :param pixel_coords: row, col in iterable format
         """
-        pixel_row, pixel_col = pixle_coords
+        pixel_row, pixel_col = pixel_coords
         pose_x = (pixel_col - (len(self.occupancy_matrix[0])-24)/2) * self.map_resolution
         pose_y = (pixel_row - (len(self.occupancy_matrix)-224)/2) * self.map_resolution
-        return [pose_x, pose_y]
+        return [pose_x, pose_y, 0.025]  # I know this will only ever be used for printing the path, so I'm returning fixed z values
 
     def get_all_neighbor_indices(self, index):
         direction_vectors = [1, 2, int('01'*self.r,2), int('10'*self.r, 2)]  # generate diretion vectors
         neighbor_indices = []
         for i in range(len(direction_vectors)):
-            if self.tree[index][3+i] != sys.maxsize: #if there isn't a wall in that direction
+            if self.tree[index][3+i] != sys.maxsize: # if there isn't a wall in that direction
                 neighbor_code = self.get_neighbor(self.tree[index], 3+i, direction_vectors[i])
                 neighbor_gen = self.tree[index][1]+self.tree[index][3+i]
                 neighbor_index = self.linear_search(neighbor_code, neighbor_gen)
-                if self.tree[index][3+i] <=0: #neighbor is bigger or same size, just add it on
+                if self.tree[index][3+i] <= 0 and neighbor_gen < self.r:  # neighbor is bigger or same size, just add it on
                     neighbor_indices.append(self.linear_search(neighbor_code, neighbor_gen))
-                else:  # otherwise, you're gonna have to find all the cells flush to that side
+                elif self.tree[index][3+i] > 0:  # otherwise, you're gonna have to find all the cells flush to that side
                     self.get_sub_cells(neighbor_code, self.tree[index][1], i, neighbor_indices)
         return neighbor_indices
 
@@ -170,13 +182,11 @@ class LQTLD:
         """
         load all subcells flush to a certain side into a list
         """
-        if gen == self.r:
-            print 'Couldn\'t find cell' + binary_to_quaternary_string(code) + ' of gen: ' + str(gen)
         flush_combos = [[0,2],[0,1],[1,3],[2,3]] #new bits to add given each case
         codes_to_check = map(lambda x: code | (x << (2 * (self.r - gen - 1))), flush_combos[direction])  # create child codes
         for code in codes_to_check:
             child_index = self.linear_search(code, gen+1)
-            if child_index != -1:
+            if child_index != -2:
                 index_list.append(child_index)
             else:
                 self.get_sub_cells(code, gen+1, direction, index_list)
@@ -197,31 +207,23 @@ class LQTLD:
         :return: white = "W", gray = "G", black = "B"
         """
         cell_row, cell_col = self.code_to_pixel(code)  # get row and col of cell
-        cell_size = 2 ** (self.r - gen)
+        cell_height = len(self.occupancy_matrix) >> gen
+        cell_width = len(self.occupancy_matrix[0]) >> gen
         score = 0
         #print 'The cell being evaluated is code' + self.binary_to_quaternary_string(code)
-        for i in range(cell_size):
-            for j in range(cell_size):
-                score += self.occupancy_matrix[cell_row + i][cell_col + j]  # black cells are represented with 1s on the grid
-
+        for i in range(cell_height):
+            for j in range(cell_width):
+                try:
+                    score += self.occupancy_matrix[cell_row + i][cell_col + j]  # black cells are represented with 1s on the grid
+                except IndexError as e:
+                    print '%d %d' % (cell_row+i, cell_col+j)
+                    raise
         if score == 0:
             return 'W'
-        elif score == cell_size:
+        elif score == cell_width * cell_height:
             return 'B'
         else:
             return 'G'
-
-    def repr_tree(self):
-        """
-        pretty print for tree
-        """
-        tree_string = '[\n'
-        for cell in self.tree:
-            cell[0] = self.binary_to_quaternary_string(cell[0])
-            tree_string += str(cell) + ',\n'
-            cell[0] = int(cell[0], 4)
-        tree_string += ']'
-        return tree_string
 
     def binary_to_quaternary_string(self, code):
         """
@@ -233,9 +235,9 @@ class LQTLD:
         if code == sys.maxsize:
             return '#'
         desired = ''
-        code_bits = bin(code)[2:].zfill(2*self.r)
-        for i in range(1, 2*self.r+1, 2):
-            desired += str(int(code_bits[i-1:i+1], 2))
+        for i in range(1, 2 * self.r, 2):
+            desired += str(int('{0:020b}'.format(code)[i - 1:i + 1], 2))
+
         return desired
 
     def grey_nodes_in_tree(self):
@@ -277,24 +279,76 @@ class LQTLD:
             else:  # if neighbor is further down or at same level...
                 return self.qlao(cell[0], tx, ty, direction << (2 * ( self.r - l)))
 
-    def shit_get(self, row, col):
+    def is_clear_path(self, start_row, start_col, end_row, end_col):
         """
-        pls bb no
+        Determines whether there's a clear pat between two parts of the matrix
+        """
+        row_vector = end_row - start_row
+        col_vector = end_col - start_col
+
+        if col_vector != 0:
+            col_step = col_vector / abs(col_vector)  # get direction of horizontal movement
+            slope = Fraction(row_vector, col_vector)
+            delta_row = 0  # change in row tracker
+            once = True
+            for delta_col in range(0, col_vector, col_step):
+                if once:
+                    if self.occupancy_matrix[start_row][start_col] == 1:
+                        return False
+                    once = False
+                else:
+                    if abs(int(delta_col*slope)) > abs(delta_row):
+                        delta_row = int(delta_col*slope)
+                    if self.occupancy_matrix[start_row+delta_row][start_col+delta_col] == 1:
+                        return False
+        elif row_vector != 0:  # handle verticle lines
+            row_step = row_vector / abs(row_vector)  # direction of vertical movement
+            for delta_row in range(0, row_vector, row_step):
+                if self.occupancy_matrix[start_row+delta_row][start_col] == 1:
+                    return False
+
+        return True
+
+    def draw_line(self, start_row, start_col, end_row, end_col, color):
+        """
+        draw a line between two pixels on the grid in given color
+        """
+        row_vector = end_row - start_row
+        col_vector = end_col - start_col
+
+        if col_vector != 0:
+            col_step = col_vector / abs(col_vector)  # get direction of horizontal movement
+            slope = Fraction(row_vector, col_vector)
+            delta_row = 0  # change in row tracker
+            once = True
+            for delta_col in range(0, col_vector, col_step):
+                if once:
+                    self.occupancy_matrix[start_row][start_col] = color
+                    once = False
+                else:
+                    if abs(int(delta_col*slope)) > abs(delta_row):
+                        delta_row = int(delta_col*slope)
+                    self.occupancy_matrix[start_row+delta_row][start_col+delta_col] = color
+        elif row_vector != 0:  # handle verticle lines
+            row_step = row_vector / abs(row_vector)  # direction of vertical movement
+            for delta_row in range(0, row_vector, row_step):
+                self.occupancy_matrix[start_row+delta_row][start_col] = color
+
+    def get_containing_cell_index(self, row, col):
+        """
+        returns index of cell in tree that contains pixel. Runs in O(n) time, but can be easily improved
         """
         row_bits = bin(row)[2:].zfill(self.r)
         col_bits = bin(col)[2:].zfill(self.r)
         pixel_code = int(''.join([row + col for row, col in zip(row_bits, col_bits)]), 2)
-        query_code = -1
-        result = -1
-        print 'Pixel Code is:' + self.binary_to_quaternary_string(pixel_code) + ' (' + col_bits + ', ' + row_bits + ')'
+        query_code = -2
+        result = -2
         for i in range(1, self.r):
             mask = int('1'*(2*i) + '0'*(2 * (self.r - i)), 2)
-            print bin(pixel_code) + ' & ' + bin(mask)
             query_code = pixel_code & mask
             query_gen = i
-            print 'Searching for cell with code:' + self.binary_to_quaternary_string(query_code) + ' and gen: ' + str(query_gen)
             result = self.linear_search(query_code, query_gen)
-            if result != -1:
+            if result != -2:
                 break
 
         return result
@@ -303,11 +357,11 @@ class LQTLD:
         for i in range(len(self.tree)):
             if code == self.tree[i][0] and gen == self.tree[i][1]:
                 return i
-        return -1
+        return -2
 
-    def get_center_pixel_from_index(self, index):
-        edge_row, edge_col = self.code_to_pixel(self.tree[index][0])
-        half = 2**(self.r - self.tree[index][1] - 1)
+    def get_center_pixel_from_index(self, flarb):
+        edge_row, edge_col = self.code_to_pixel(self.tree[flarb][0])
+        half = self.size>>(self.tree[flarb][1]+1)
         return [edge_row+half, edge_col+half]
 
 
@@ -324,12 +378,15 @@ class LQTLD:
         edits the occupancy_matrix to draw in the edges of the cells
         """
         for i in range(len(self.tree)):
-            if self.tree[i][2] != 'B' and self.tree[i][1] < (self.r-1):
-                self.color_cell(i, int('0x8F8F8F', 16))
+            if self.tree[i][2] != 'B' and self.tree[i][1] < (self.r-2):
+                self.color_cell(i, int('0xAFAFAF', 16))
+
+    def purge(self):
+        self.tree = filter(lambda x: x[2] == 'W', self.tree)
 
     def draw_pretty_quarters(self):
         for i in range(len(self.tree)):
-            if self.tree[i][1] < (self.r-1):
+            if self.tree[i][1] < (self.r-2):
                 header = int(self.tree[i][0]>>18)
                 if header == 0:
                     self.color_cell(i, int('0xFF0000', 16))  # 0 is red
@@ -354,13 +411,13 @@ class LQTLD:
         :param filename: string used as filename for output_PNG
         """
         output_file = open(filename, 'wb')
-        writer = png.Writer(2**self.r, 2**self.r)
+        writer = png.Writer(self.size, self.size)
         pixel_matrix  = []
-        for row in range(len(self.occupancy_matrix)):
+        for row in range(self.size):
             pixel_matrix.append([])
-            for col in range(len(self.occupancy_matrix[0])):
+            for col in range(self.size):
                 if self.occupancy_matrix[row][col] == 0:
-                    pixel_matrix[row].extend([255,255,255])
+                    pixel_matrix[row].extend([192,192,192])
                 elif self.occupancy_matrix[row][col] == 1:
                     pixel_matrix[row].extend([0,0,0])
                 else:
@@ -369,17 +426,3 @@ class LQTLD:
                     r = (self.occupancy_matrix[row][col]>>16) & 255
                     pixel_matrix[row].extend([r,g,b])
         writer.write(output_file, pixel_matrix[::-1])
-
-if __name__ == '__main__':
-    flipped_grid = [[1, 1, 1, 1, 1, 0, 0, 0],  # this is sample data from paper
-                    [1, 1, 1, 1, 1, 0, 0, 0],
-                    [1, 1, 1, 1, 1, 1, 0, 0],
-                    [1, 1, 1, 1, 1, 1, 0, 0],
-                    [0, 0, 0, 0, 1, 1, 1, 1],
-                    [0, 0, 0, 0, 1, 1, 1, 1],
-                    [0, 0, 0, 0, 0, 0, 0, 0],
-                    [0, 0, 0, 0, 0, 0, 0, 0]]
-    desired_grid = np.flipud(np.mat(flipped_grid)).tolist()  # flip my matrix to fit coordinates of code system
-    lqtld = LQTLD(desired_grid, 1, [8, 8])
-    lqtld.draw_all_usable_cells()
-    lqtld.generate_debug_png('/tmp/mini_test.png')
